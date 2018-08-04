@@ -575,18 +575,19 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
     # here come's the integration part. I'm not really sure what I'm doing here.
     # eq 2 says to integrate from r to Rb. What's Rb?
     Rmax = r.max()
-    
-    # if we want to do a fitting function?:
-    #Rvec = np.linspace(0, Rmax,100)
-    #chi = np.zeros_like(Rvec)
-    #for (i,R) in enumerate(Rint):
-    #    integral[i] = quad(lambda rr: P(rr,z,M500,logP0,c500,cosmo,Dv) * r. /np.sqrt(rr**2 + r**2), r, R)[0]
-    #yfunc = interp1d(Rint, integral, kind="linear",fill_value="extrapolate")
-    
-    # r is a vector here. do we need to break this up?
-    integral = quad(lambda rr: Pr(rr,z,M500,logP0,c500,cosmo,Dv) * r /np.sqrt(rr**2 + r**2), r, Rmax)[0]
+        
+    # r is a vector here.  we need to break this up for quad
+    integral = np.zeros(r.shape)
+    for (i,r_i) in enumerate(r):
+        integral[i] = quad(lambda rr: 
+            Pr(rr*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value  
+            * rr /np.sqrt(rr**2 + r_i.value**2), 
+            r_i.value, Rmax.value)[0]
+    unit = u.keV/u.cm**2 # units of integral
+    integral = integral*unit # quad doesnt work well with units (?), this restores unit
+
     factor = con.sigma_T.to(u.cm**2) / (con.m_e*con.c**2).to(u.keV) # need to check units!
-    y = factor * integral
+    y = factor * integral # now y is dimensionless
     return y
 
 def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
