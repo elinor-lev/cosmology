@@ -542,7 +542,7 @@ def P500(z,M500,cosmo):
     Equation (10)
     """
     h70 = cosmo.h/0.7
-    return 1.65e-3 * cosmo.efunc(z)**(8./3) * (M500/(3e14/h70))**(2./3)  * h70**2
+    return 1.65e-3 * cosmo.efunc(z)**(8./3) * (M500/(3e14*u.Msun/h70))**(2./3)  * h70**2 *u.keV * u.cm**(-3)
     
 def Px_gNFW(x, logP0, c500):
     """ Pressure profile, normalized, scaled. 
@@ -561,7 +561,7 @@ def Pr(r,z,M500,logP0,c500,cosmo=None,Dv=500):
     h70 = cosmo.h/0.7
     R500 = rvir_NFW(z,M500,Delta_C=Dv,cosmo=cosmo)
     x = r/R500
-    nss_factor = (M500/(3e14/h70))**0.12 # non-self-similar factor as given by Eq (11); check w/Nick
+    nss_factor = (M500/(3e14*u.Msun/h70))**0.12 # non-self-similar factor as given by Eq (11); check w/Nick
     return P500(z,M500,cosmo) * Px_gNFW(x,logP0,c500) * nss_factor
     
 def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500): 
@@ -585,14 +585,14 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
     
     # r is a vector here. do we need to break this up?
     integral = quad(lambda rr: Pr(rr,z,M500,logP0,c500,cosmo,Dv) * r /np.sqrt(rr**2 + r**2), r, Rmax)[0]
-    factor = con.sigma_T / (con.m_e*con.c**2) # need to check units!
+    factor = con.sigma_T.to(u.cm**2) / (con.m_e*con.c**2).to(u.keV) # need to check units!
     y = factor * integral
     return y
 
 def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
     """ 
     observed y profile - Equation (3)
-    real y is colvolved with the beam. when done in angular units it's simple; 
+    real y is convolved with the beam. when done in angular units it's simple; 
     when done is physical, should we just convert psf size from arcmin to Mpc?
     """
     psf = fwhm_beam/ np.sqrt(8.*np.log(2.)) * u.arcmin # in arcmin
