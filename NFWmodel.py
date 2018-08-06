@@ -574,15 +574,18 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
 
     # here come's the integration part. I'm not really sure what I'm doing here.
     # eq 2 says to integrate from r to Rb. What's Rb?
-    Rmax = r.max()
+    #Rmax = r.max() #?
+    R500 = rvir_NFW(z,M500,Delta_C=Dv,cosmo=cosmo)
+    Rmax = 5*R500
         
     # r is a vector here.  we need to break this up for quad
     integral = np.zeros(r.shape)
-    for (i,r_i) in enumerate(r):
+    for (i,r_i) in enumerate(r): 
+        # quad doesn't seem to deal with quantities, so stripping it down
         integral[i] = quad(lambda rr: 
-            Pr(rr*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value  
+            2. * Pr(rr*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value  
             * rr /np.sqrt(rr**2 + r_i.value**2), 
-            r_i.value, Rmax.value)[0]
+            r_i.value, Rmax.value)[0] # what are the integral limits?
     unit = u.keV/u.cm**2 # units of integral
     integral = integral*unit # quad doesnt work well with units (?), this restores unit
 
@@ -596,9 +599,12 @@ def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
     real y is convolved with the beam. when done in angular units it's simple; 
     when done is physical, should we just convert psf size from arcmin to Mpc?
     """
+    if cosmo is None:
+        cosmo = FlatLambdaCDM(H0=70, Om0=0.3,)
+
     psf = fwhm_beam/ np.sqrt(8.*np.log(2.)) * u.arcmin # in arcmin
     psf_r = (psf*cosmo.kpc_comoving_per_arcmin(z)).to(u.Mpc) # in Mpc
-    gauss_win = signal.gaussian(51, std=psf_r)   
+    gauss_win = signal.gaussian(51, std=psf_r.value)   
     y = ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500)
     y_filtered = signal.convolve(y, gauss_win, mode='same') / sum(gauss_win)
     return y_filtered
