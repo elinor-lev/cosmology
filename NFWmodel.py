@@ -542,14 +542,14 @@ def P500(z,M500,cosmo):
     Equation (10)
     """
     h70 = cosmo.h/0.7
-    return 1.65e-3 * cosmo.efunc(z)**(8./3) * (M500/(3e14*u.Msun/h70))**(2./3)  * h70**2 *u.keV * u.cm**(-3)
+    return 1.65e-3 * cosmo.efunc(z)**(8./3) * (M500/(3e14*u.Msun/h70))**(2./3)  * h70**2 * (u.keV * u.cm**(-3))
     
 def Px_gNFW(x, logP0, c500):
     """ Pressure profile, normalized, scaled. 
     Equation (7)
     """
     gamma, alpha, beta = [0.308, 1.05, 5.49] # Planck set parameters
-    P0 = 10**logP0
+    P0 = 10**logP0 # amplitude
     return P0/( (c500*x)**gamma * (1+(c500*x)**alpha)**((beta-gamma)/alpha) )
 
 def Pr(r,z,M500,logP0,c500,cosmo=None,Dv=500):
@@ -572,24 +572,24 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
     if cosmo is None:
         cosmo = FlatLambdaCDM(H0=70, Om0=0.3,)
 
-    # here come's the integration part. I'm not really sure what I'm doing here.
+    # here come's the integration part. 
     # eq 2 says to integrate from r to Rb. What's Rb?
     #Rmax = r.max() #?
     R500 = rvir_NFW(z,M500,Delta_C=Dv,cosmo=cosmo)
     Rmax = 5*R500
         
-    # r is a vector here.  we need to break this up for quad
+    # r is an array.  we need to break this up to scalars for quad
     integral = np.zeros(r.shape)
     for (i,r_i) in enumerate(r): 
         # quad doesn't seem to deal with quantities, so stripping it down
         integral[i] = quad(lambda rr: 
             2. * Pr(rr*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value  
             * rr /np.sqrt(rr**2 + r_i.value**2), 
-            0., Rmax.value)[0] # what are the integral limits? changed lower limit from r (eq(2)) to 0 (Sehgal paper)
+            0., Rmax.value)[0] # what are the integral limits? changed lower limit from r (eq(2)) to 0 (Sehgal paper) and upper to 5*R500
     unit = u.keV/u.cm**2 # units of integral
     integral = integral*unit # quad doesnt work well with units (?), this restores unit
 
-    factor = con.sigma_T.to(u.cm**2) / (con.m_e*con.c**2).to(u.keV) # need to check units!
+    factor = con.sigma_T.to(u.cm**2) / (con.m_e*con.c**2).to(u.keV) # 
     y = factor * integral # now y is dimensionless
     return y
 
@@ -601,11 +601,14 @@ def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
     """
     if cosmo is None:
         cosmo = FlatLambdaCDM(H0=70, Om0=0.3,)
-
+    # convert the beam from angular (theta) to comoving (r). This is likely wrong but what's been used. 
     psf = fwhm_beam/ np.sqrt(8.*np.log(2.)) * u.arcmin # in arcmin
     psf_r = (psf*cosmo.kpc_comoving_per_arcmin(z)).to(u.Mpc) # in Mpc
-    gauss_win = signal.gaussian(51, std=psf_r.value)   
+    # made a gaussian filter with beam width
+    gauss_win = signal.gaussian(51, std=psf_r.value) 
+    # make the y profile
     y = ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500)
+    # convolve y and beam. convolution is done unitless
     y_filtered = signal.convolve(y, gauss_win, mode='same') / sum(gauss_win)
     return y_filtered
 
