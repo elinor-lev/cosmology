@@ -585,7 +585,7 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
         integral[i] = quad(lambda rr: 
             2. * Pr(rr*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value  
             * rr /np.sqrt(rr**2 + r_i.value**2), 
-            r_i.value, Rmax.value)[0] # what are the integral limits?
+            0., Rmax.value)[0] # what are the integral limits? changed lower limit from r (eq(2)) to 0 (Sehgal paper)
     unit = u.keV/u.cm**2 # units of integral
     integral = integral*unit # quad doesnt work well with units (?), this restores unit
 
