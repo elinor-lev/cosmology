@@ -574,7 +574,6 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
 
     # here come's the integration part. 
     # eq 2 says to integrate from r to Rb. What's Rb?
-    #Rmax = r.max() #?
     R500 = rvir_NFW(z,M500,Delta_C=Dv,cosmo=cosmo)
     Rmax = 5*R500
         
@@ -584,14 +583,15 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
         # quad doesn't seem to deal with quantities, so stripping it down
         integral[i] = quad(lambda rr: 
             2. * Pr(rr*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value  
-            * rr /np.sqrt(rr**2 + r_i.value**2), 
-            0., Rmax.value)[0] # what are the integral limits? changed lower limit from r (eq(2)) to 0 (Sehgal paper) and upper to 5*R500
+            * rr /np.sqrt(rr**2 - r_i.value**2), 
+            r_i.value, Rmax.value)[0] # what are the integral limits? changed upper to 5*R500
     unit = u.keV/u.cm**2 # units of integral
     integral = integral*unit # quad doesnt work well with units (?), this restores unit
 
     factor = con.sigma_T.to(u.cm**2) / (con.m_e*con.c**2).to(u.keV) # 
     y = factor * integral # now y is dimensionless
     return y
+
 
 def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
     """ 
@@ -607,9 +607,9 @@ def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
     # made a gaussian filter with beam width
     gauss_win = signal.gaussian(51, std=psf_r.value) 
     # make the y profile
-    y = ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500)
+    y = ySZ_r(r,z,M500,logP0,c500, cosmo=cosmo,Dv=Dv)
     # convolve y and beam. convolution is done unitless
     y_filtered = signal.convolve(y, gauss_win, mode='same') / sum(gauss_win)
     return y_filtered
 
-    
+   
