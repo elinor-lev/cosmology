@@ -1,3 +1,3 @@
 # cosmology
 
-NFW model library and cosmology tools
+Cosmology tools, including NFW model library
