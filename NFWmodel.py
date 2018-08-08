@@ -6,7 +6,7 @@ import cosmology as c
 #import useful_el as usel
 import NFWcris as NFWc
 import clusterlensing as cl    
-#from scipy.integrate import quad,dblquad
+from scipy.integrate import quad,dblquad
 from scipy.integrate import trapz
 import astropy.constants as con
 from scipy import signal
@@ -588,16 +588,23 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
     # here come's the integration part. 
     R500 = rvir_NFW(z,M500,Delta_C=Dv,cosmo=cosmo)
     Rmax = 5*R500
-    print Rmax
+
     factor = con.sigma_T.to(u.cm**2) / (con.m_e*con.c**2).to(u.keV) # 
-    y = np.zeros(r.shape)
-    eps = 1e-10 # to avoid divide by zero
-    for (i,r_i) in enumerate(r):
-        rr = np.linspace(r_i*(1+eps),Rmax,1000).to(u.cm) # intgral range, cm
-        r_i = r_i.to(u.cm) # unit compatibility, cm
-        integrand = factor * 2. * Pr(rr.to(u.Mpc),z,M500,logP0,c500,cosmo,Dv)\
-            * rr /np.sqrt(rr**2 - r_i**2)
-        y[i] = trapz(integrand, x=rr)
+    y = np.zeros(r.shape)*np.nan
+#    eps = 1e-20 # to avoid divide by zero
+#    for (i,r_i) in enumerate(r):
+#        rr = np.linspace(r_i*(1+eps),Rmax,1000).to(u.cm) # intgral range, cm
+#        r_i = r_i.to(u.cm) # unit compatibility, cm
+#        integrand = factor * 2. * Pr(rr.to(u.Mpc),z,M500,logP0,c500,cosmo,Dv)\
+#            * rr /np.sqrt(rr**2 - r_i**2)
+#        y[i] = trapz(integrand, x=rr)
+    
+    for (i,r_i) in enumerate(r[r<Rmax]):
+
+        r_i = r_i.to_value(u.cm) # unit compatibility, cm
+        integrand = lambda x: factor.value * 2. * x*r_i* \
+        Pr(x* (r_i*u.cm).to(u.Mpc),z,M500,logP0,c500,cosmo,Dv).value
+        y[i] = quad(integrand, 1., Rmax.to_value(u.cm)/r_i, weight='alg', wvar=(-1./2, -1./2))[0]
 
     return y
 
@@ -621,7 +628,7 @@ def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
     ind = np.isfinite(y)
     y_filtered = np.zeros(y.shape) * np.nan
     # convolve y and beam. convolution is done unitless
-    y_filtered[ind] = gaussian_filter1d(y[np.isfinite(y)],psf_r.value)
+    y_filtered[ind] = gaussian_filter1d(y[np.isfinite(y)],psf_r.value/2.)
     return y_filtered
 
 def YSZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500, Rmax=None):
