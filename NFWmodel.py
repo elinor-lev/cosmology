@@ -6,7 +6,8 @@ import cosmology as c
 #import useful_el as usel
 import NFWcris as NFWc
 import clusterlensing as cl    
-from scipy.integrate import quad,dblquad
+#from scipy.integrate import quad,dblquad
+from scipy.integrate import trapz
 import astropy.constants as con
 from scipy import signal
 
@@ -585,23 +586,19 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
         cosmo = FlatLambdaCDM(H0=70, Om0=0.3,)
 
     # here come's the integration part. 
-    # eq 2 says to integrate from r to Rb. What's Rb?
     R500 = rvir_NFW(z,M500,Delta_C=Dv,cosmo=cosmo)
     Rmax = 5*R500
-        
-    # r is an array.  we need to break this up to scalars for quad
-    integral = np.zeros(r.shape)
-    for (i,r_i) in enumerate(r):
-        # quad doesn't seem to deal with quantities, so stripping it down
-        # integral r limits need to be in cm to match P units (keV/cm^3)
-        integrand = lambda rr: 2. * Pr(rr*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value\
-        * rr /np.sqrt(rr**2 - r_i.to_value(u.cm)**2)
-        integral[i] = quad(integrand,  r_i.to_value(u.cm), Rmax.to_value(u.cm), )[0] # what are the integral limits? changed upper to 5*R500
-    unit = u.keV/u.cm**2 # units of integral
-    integral = integral*unit # quad doesnt work well with units (?), this restores unit
-
+    print Rmax
     factor = con.sigma_T.to(u.cm**2) / (con.m_e*con.c**2).to(u.keV) # 
-    y = factor * integral # now y is dimensionless
+    y = np.zeros(r.shape)
+    eps = 1e-10 # to avoid divide by zero
+    for (i,r_i) in enumerate(r):
+        rr = np.linspace(r_i*(1+eps),Rmax,1000).to(u.cm) # intgral range, cm
+        r_i = r_i.to(u.cm) # unit compatibility, cm
+        integrand = factor * 2. * Pr(rr.to(u.Mpc),z,M500,logP0,c500,cosmo,Dv)\
+            * rr /np.sqrt(rr**2 - r_i**2)
+        y[i] = trapz(integrand, x=rr)
+
     return y
 
 
@@ -613,42 +610,35 @@ def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
     real y is convolved with the beam. when done in angular units it's simple; 
     when done is physical, should we just convert psf size from arcmin to Mpc?
     """
+    from scipy.ndimage.filters import gaussian_filter1d
     if cosmo is None:
         cosmo = FlatLambdaCDM(H0=70, Om0=0.3,)
     # convert the beam from angular (theta) to comoving (r). This is likely wrong but what's been used. 
     psf = fwhm_beam/ np.sqrt(8.*np.log(2.)) * u.arcmin # in arcmin
     psf_r = (psf*cosmo.kpc_comoving_per_arcmin(z)).to(u.Mpc) # in Mpc
-    # made a gaussian filter with beam width
-    gauss_win = signal.gaussian(51, std=psf_r.value) 
     # make the y profile
     y = ySZ_r(r,z,M500,logP0,c500, cosmo=cosmo,Dv=Dv)
+    ind = np.isfinite(y)
+    y_filtered = np.zeros(y.shape) * np.nan
     # convolve y and beam. convolution is done unitless
-    y_filtered = signal.convolve(y, gauss_win, mode='same') / sum(gauss_win)
+    y_filtered[ind] = gaussian_filter1d(y[np.isfinite(y)],psf_r.value)
     return y_filtered
 
-def YSZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
-    R500 = rvir_NFW(z,M500,Delta_C=Dv,cosmo=cosmo)
-    Rmax = 5*R500
+def YSZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500, Rmax=None):
+    if Rmax is None:
+        R500 = rvir_NFW(z,M500,Delta_C=Dv,cosmo=cosmo)
+        Rmax = 5*R500
         
     # r is an array.  we need to break this up to scalars for quad
-    integral = np.zeros(r.shape)
+    Y = np.zeros(r.shape)
 
     for (i,r_i) in enumerate(r): 
-        # quad doesn't seem to deal with quantities, so stripping it down
-#        integral[i] = quad(lambda r1: 2*np.pi*r1 * 
-#                quad(lambda r2: 
-#                    2. * Pr(r2*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value  
-#                    * r2 /np.sqrt(r2**2 - r1**2), 
-#                    r1, Rmax.value)[0] ,
-#                    0., r_i.value)[0]
-        func = lambda r2, r1: 2*np.pi*r1 * \
-        2. * Pr(r2*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value  \
-        * r2 /np.sqrt(r2**2 - r1**2)
-        integral[i] = dblquad(func, 0., r_i.value, lambda r2:r2, lambda r2:Rmax.value, epsrel=1.49e-02)[0]
-    unit = u.keV # units of integral
-    integral = integral*unit # quad doesnt work well with units (?), this restores unit
-    factor = con.sigma_T.to(u.cm**2) / (con.m_e*con.c**2).to(u.keV) # 
-    Y = factor * integral # now y is dimensionless
+        rr = np.linspace(0,Rmax,100).to(u.cm) # intgral range
+        r_i = r_i.to(u.cm) # unit compatibility
+        integrand = 2.*np.pi * rr * ySZ_r(rr.to(u.Mpc),z,M500,logP0,c500,cosmo,Dv)
+        
+        Y[i] = trapz(integrand, rr)
+
     return Y
 
     
