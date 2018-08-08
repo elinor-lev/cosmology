@@ -6,7 +6,7 @@ import cosmology as c
 #import useful_el as usel
 import NFWcris as NFWc
 import clusterlensing as cl    
-from scipy.integrate import quad
+from scipy.integrate import quad,dblquad
 import astropy.constants as con
 from scipy import signal
 
@@ -538,22 +538,32 @@ def DSigmaT_NFW_co_cl(par,data):
 #%% pressure profiles, equations taken from Planck 2013 pressure profile paper,  A&A, 550 (2013) A131
 
 def P500(z,M500,cosmo):
-    """ P500 scales with cluster mass in a standard self-similar model
+    """ 
+    P500(z,M500,cosmo)
+    ---------
+    P500 scales with cluster mass in a standard self-similar model
     Equation (10)
     """
     h70 = cosmo.h/0.7
     return 1.65e-3 * cosmo.efunc(z)**(8./3) * (M500/(3e14*u.Msun/h70))**(2./3)  * h70**2 * (u.keV * u.cm**(-3))
     
 def Px_gNFW(x, logP0, c500):
-    """ Pressure profile, normalized, scaled. 
+    """ 
+    Px_gNFW(x, logP0, c500)
+    -------
+    Pressure profile, normalized, scaled. 
     Equation (7)
     """
-    gamma, alpha, beta = [0.308, 1.05, 5.49] # Planck set parameters
+    #gamma, alpha, beta = [0.308, 1.05, 5.49] # Arnaud+10 parameters
+    gamma, alpha, beta = [0.31, 1.33, 4.13] # Planck+13 parameters
     P0 = 10**logP0 # amplitude
     return P0/( (c500*x)**gamma * (1+(c500*x)**alpha)**((beta-gamma)/alpha) )
 
 def Pr(r,z,M500,logP0,c500,cosmo=None,Dv=500):
-    """ Pressure profile, comoving
+    """ 
+    Pr(r,z,M500,logP0,c500,cosmo=None,Dv=500)
+    -------
+    Pressure profile, comoving
     Equation (11)
     """
     if cosmo is None:
@@ -565,8 +575,10 @@ def Pr(r,z,M500,logP0,c500,cosmo=None,Dv=500):
     return P500(z,M500,cosmo) * Px_gNFW(x,logP0,c500) * nss_factor
     
 def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500): 
-    """SZ Compton y profile
-    project pressure in a cylinder
+    """
+    ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500)
+    ----------
+    SZ Compton y profile, projected pressure 
     Equation (2)
     """
     if cosmo is None:
@@ -579,12 +591,12 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
         
     # r is an array.  we need to break this up to scalars for quad
     integral = np.zeros(r.shape)
-    for (i,r_i) in enumerate(r): 
+    for (i,r_i) in enumerate(r):
         # quad doesn't seem to deal with quantities, so stripping it down
-        integral[i] = quad(lambda rr: 
-            2. * Pr(rr*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value  
-            * rr /np.sqrt(rr**2 - r_i.value**2), 
-            r_i.value, Rmax.value)[0] # what are the integral limits? changed upper to 5*R500
+        # integral r limits need to be in cm to match P units (keV/cm^3)
+        integrand = lambda rr: 2. * Pr(rr*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value\
+        * rr /np.sqrt(rr**2 - r_i.to_value(u.cm)**2)
+        integral[i] = quad(integrand,  r_i.to_value(u.cm), Rmax.to_value(u.cm), )[0] # what are the integral limits? changed upper to 5*R500
     unit = u.keV/u.cm**2 # units of integral
     integral = integral*unit # quad doesnt work well with units (?), this restores unit
 
@@ -595,6 +607,8 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
 
 def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
     """ 
+    ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500)
+    ---------
     observed y profile - Equation (3)
     real y is convolved with the beam. when done in angular units it's simple; 
     when done is physical, should we just convert psf size from arcmin to Mpc?
@@ -612,4 +626,29 @@ def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
     y_filtered = signal.convolve(y, gauss_win, mode='same') / sum(gauss_win)
     return y_filtered
 
-   
+def YSZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
+    R500 = rvir_NFW(z,M500,Delta_C=Dv,cosmo=cosmo)
+    Rmax = 5*R500
+        
+    # r is an array.  we need to break this up to scalars for quad
+    integral = np.zeros(r.shape)
+
+    for (i,r_i) in enumerate(r): 
+        # quad doesn't seem to deal with quantities, so stripping it down
+#        integral[i] = quad(lambda r1: 2*np.pi*r1 * 
+#                quad(lambda r2: 
+#                    2. * Pr(r2*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value  
+#                    * r2 /np.sqrt(r2**2 - r1**2), 
+#                    r1, Rmax.value)[0] ,
+#                    0., r_i.value)[0]
+        func = lambda r2, r1: 2*np.pi*r1 * \
+        2. * Pr(r2*u.Mpc,z,M500,logP0,c500,cosmo,Dv).value  \
+        * r2 /np.sqrt(r2**2 - r1**2)
+        integral[i] = dblquad(func, 0., r_i.value, lambda r2:r2, lambda r2:Rmax.value, epsrel=1.49e-02)[0]
+    unit = u.keV # units of integral
+    integral = integral*unit # quad doesnt work well with units (?), this restores unit
+    factor = con.sigma_T.to(u.cm**2) / (con.m_e*con.c**2).to(u.keV) # 
+    Y = factor * integral # now y is dimensionless
+    return Y
+
+    
