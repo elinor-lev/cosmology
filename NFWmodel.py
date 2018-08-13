@@ -548,7 +548,7 @@ def P500(z,M500,cosmo):
     h70 = cosmo.h/0.7
     return 1.65e-3 * cosmo.efunc(z)**(8./3) * (M500/(3e14*u.Msun/h70))**(2./3)  * h70**2 * (u.keV * u.cm**(-3))
     
-def Px_gNFW(x, logP0, c500):
+def Px_gNFW(x, P0, c500):
     """ 
     Px_gNFW(x, logP0, c500)
     -------
@@ -557,10 +557,9 @@ def Px_gNFW(x, logP0, c500):
     """
     #gamma, alpha, beta = [0.308, 1.05, 5.49] # Arnaud+10 parameters
     gamma, alpha, beta = [0.31, 1.33, 4.13] # Planck+13 parameters
-    P0 = 10**logP0 # amplitude
-    return P0/( (c500*x)**gamma * (1+(c500*x)**alpha)**((beta-gamma)/alpha) )
+    return P0/( (c500*x)**gamma * (1.+(c500*x)**alpha)**((beta-gamma)/alpha) )
 
-def Pr(r,z,M500,logP0,c500,cosmo=None,Dv=500):
+def Pr(r,z,M500,P0,c500,cosmo=None,Dv=500):
     """ 
     Pr(r,z,M500,logP0,c500,cosmo=None,Dv=500)
     -------
@@ -573,9 +572,9 @@ def Pr(r,z,M500,logP0,c500,cosmo=None,Dv=500):
     R500 = rvir_NFW(z,M500,Delta_C=Dv,cosmo=cosmo)
     x = r/R500
     nss_factor = (M500/(3e14*u.Msun/h70))**0.12 # non-self-similar factor as given by Eq (11); check w/Nick
-    return P500(z,M500,cosmo) * Px_gNFW(x,logP0,c500) * nss_factor
+    return P500(z,M500,cosmo) * Px_gNFW(x,P0,c500) * nss_factor
     
-def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500): 
+def ySZ_r(r,z,M500,P0,c500, cosmo=None,Dv=500): 
     """
     ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500)
     ----------
@@ -603,13 +602,13 @@ def ySZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500):
 
         r_i = r_i.to_value(u.cm) # unit compatibility, cm
         integrand = lambda x: factor.value * 2. * x*r_i* \
-        Pr(x* (r_i*u.cm).to(u.Mpc),z,M500,logP0,c500,cosmo,Dv).value
+        Pr(x* (r_i*u.cm).to(u.Mpc),z,M500,P0,c500,cosmo,Dv).value
         y[i] = quad(integrand, 1., Rmax.to_value(u.cm)/r_i, weight='alg', wvar=(-1./2, -1./2))[0]
 
     return y
 
 
-def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
+def ySZ_convolved(r,z,M500,P0,c500, fwhm_beam, cosmo=None,Dv=500):
     """ 
     ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500)
     ---------
@@ -621,17 +620,17 @@ def ySZ_convolved(r,z,M500,logP0,c500, fwhm_beam, cosmo=None,Dv=500):
     if cosmo is None:
         cosmo = FlatLambdaCDM(H0=70, Om0=0.3,)
     # convert the beam from angular (theta) to comoving (r). This is likely wrong but what's been used. 
-    psf = fwhm_beam/ np.sqrt(8.*np.log(2.)) * u.arcmin # in arcmin
+    psf = fwhm_beam/ np.sqrt(8.*np.log(2.))  # in arcmin
     psf_r = (psf*cosmo.kpc_comoving_per_arcmin(z)).to(u.Mpc) # in Mpc
     # make the y profile
-    y = ySZ_r(r,z,M500,logP0,c500, cosmo=cosmo,Dv=Dv)
+    y = ySZ_r(r,z,M500,P0,c500, cosmo=cosmo,Dv=Dv)
     ind = np.isfinite(y)
     y_filtered = np.zeros(y.shape) * np.nan
     # convolve y and beam. convolution is done unitless
-    y_filtered[ind] = gaussian_filter1d(y[np.isfinite(y)],psf_r.value/2.)
+    y_filtered[ind] = gaussian_filter1d(y[np.isfinite(y)],psf_r.value)
     return y_filtered
 
-def YSZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500, Rmax=None):
+def YSZ_r(r,z,M500,P0,c500, cosmo=None,Dv=500, Rmax=None):
     if Rmax is None:
         R500 = rvir_NFW(z,M500,Delta_C=Dv,cosmo=cosmo)
         Rmax = 5*R500
@@ -642,7 +641,7 @@ def YSZ_r(r,z,M500,logP0,c500, cosmo=None,Dv=500, Rmax=None):
     for (i,r_i) in enumerate(r): 
         rr = np.linspace(0,Rmax,100).to(u.cm) # intgral range
         r_i = r_i.to(u.cm) # unit compatibility
-        integrand = 2.*np.pi * rr * ySZ_r(rr.to(u.Mpc),z,M500,logP0,c500,cosmo,Dv)
+        integrand = 2.*np.pi * rr * ySZ_r(rr.to(u.Mpc),z,M500,P0,c500,cosmo,Dv)
         
         Y[i] = trapz(integrand, rr)
 
