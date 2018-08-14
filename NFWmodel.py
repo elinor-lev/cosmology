@@ -628,7 +628,8 @@ def ySZ_convolved(r,z,M500,P0,c500, fwhm_beam, cosmo=None,Dv=500):
     ind = np.isfinite(y)
     y_filtered = np.zeros(y.shape) * np.nan
     # convolve y and beam. convolution is done unitless
-    g = Gaussian1DKernel(stddev=psf_r.value/dr)
+    dr = r.max()-r.min()/(len(r)-1) # this is only good for linear binning?
+    g = Gaussian1DKernel(stddev=psf_r/dr)
     y_filtered[ind] = convolve(y[ind], g,'fill',fill_value=np.nan)
     #y_filtered[ind] = gaussian_filter1d(y[np.isfinite(y)],psf_r.value,mode='constant')
     return y_filtered
