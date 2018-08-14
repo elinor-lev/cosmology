@@ -616,7 +616,8 @@ def ySZ_convolved(r,z,M500,P0,c500, fwhm_beam, cosmo=None,Dv=500):
     real y is convolved with the beam. when done in angular units it's simple; 
     when done is physical, should we just convert psf size from arcmin to Mpc?
     """
-    from scipy.ndimage.filters import gaussian_filter1d
+    #from scipy.ndimage.filters import gaussian_filter1d
+    from astropy.convolution import Gaussian1DKernel, convolve
     if cosmo is None:
         cosmo = FlatLambdaCDM(H0=70, Om0=0.3,)
     # convert the beam from angular (theta) to comoving (r). This is likely wrong but what's been used. 
@@ -627,7 +628,9 @@ def ySZ_convolved(r,z,M500,P0,c500, fwhm_beam, cosmo=None,Dv=500):
     ind = np.isfinite(y)
     y_filtered = np.zeros(y.shape) * np.nan
     # convolve y and beam. convolution is done unitless
-    y_filtered[ind] = gaussian_filter1d(y[np.isfinite(y)],psf_r.value)
+    g = Gaussian1DKernel(stddev=psf_r.value/dr)
+    y_filtered[ind] = convolve(y[ind], g,'fill',fill_value=np.nan)
+    #y_filtered[ind] = gaussian_filter1d(y[np.isfinite(y)],psf_r.value,mode='constant')
     return y_filtered
 
 def YSZ_r(r,z,M500,P0,c500, cosmo=None,Dv=500, Rmax=None):
